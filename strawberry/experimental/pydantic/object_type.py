@@ -43,6 +43,8 @@ from strawberry.schema_directive import StrawberrySchemaDirective
 from strawberry.types.type_resolver import _get_fields
 from strawberry.types.types import TypeDefinition
 
+from strawberry.experimental.pydantic.nested import process_nested_fields
+
 from .exceptions import MissingFieldsListError, UnregisteredTypeException
 
 
@@ -140,6 +142,8 @@ def type(
     model: Type[PydanticModel],
     *,
     fields: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+    related: Optional[List[str]] = None,
     name: Optional[str] = None,
     is_input: bool = False,
     is_interface: bool = False,
@@ -170,7 +174,7 @@ def type(
             set(name for name, typ in existing_fields.items() if typ == strawberry.auto)
         )
 
-        if all_fields:
+        if all_fields or exclude:
             if fields_set:
                 warnings.warn(
                     "Using all_fields overrides any explicitly defined fields "
@@ -180,8 +184,27 @@ def type(
             fields_set = set(model_fields.keys())
             auto_fields_set = set(model_fields.keys())
 
+        # This decorator add exclude and related fields
+        # features not present in strawberry
+        exclude_set = set(exclude or [])
+        fields_set = fields_set - exclude_set
+        fields_set = fields_set.union(set(related or []))
+
+        nested_fields = process_nested_fields(cls, fields_set, model)
+
         if not fields_set:
             raise MissingFieldsListError(cls)
+
+        # Nested fields are already strawberry fields,
+        # we'll add them after model fields
+        fields_set = fields_set - set(f.name for f in nested_fields)
+
+        if all_fields and set(existing_fields) - set(nested_fields):
+            warnings.warn(
+                "Using all_fields overrides any non-relational explicitly defined fields "
+                "in the model, using both is likely a bug",
+                stacklevel=2,
+            )
 
         ensure_all_auto_fields_in_pydantic(
             model=model, auto_fields=auto_fields_set, cls_name=cls.__name__
@@ -209,7 +232,7 @@ def type(
                     type_annotation=field.type,
                     field=field,
                 )
-                for field in extra_fields + private_fields
+                for field in extra_fields + private_fields + nested_fields
                 if field.name not in fields_set
             )
         )

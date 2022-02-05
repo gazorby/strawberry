@@ -6,6 +6,19 @@ import pydantic
 
 import strawberry
 
+from .lazy_types import (
+    BranchA,
+    BranchB,
+    HobbyLazy,
+    UserLazy,
+    UserListLazy,
+    UserUnionLazy,
+    UserOptionalLazy,
+)
+
+# import debugpy
+# debugpy.listen(("0.0.0.0", 5678))
+# debugpy.wait_for_client()
 
 def test_basic_type_field_list():
     class UserModel(pydantic.BaseModel):
@@ -189,6 +202,243 @@ def test_basic_type_with_nested_model():
 
     class User(pydantic.BaseModel):
         hobby: Hobby
+
+    @strawberry.experimental.pydantic.type(User, fields=["hobby"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(hobby=HobbyType(name="Skii"))
+
+    schema = strawberry.Schema(query=Query)
+
+    query = "{ user { hobby { name } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["hobby"]["name"] == "Skii"
+
+
+def test_basic_type_with_nested_model_unordered():
+    class Hobby(pydantic.BaseModel):
+        name: str
+
+    class User(pydantic.BaseModel):
+        hobby: Hobby
+
+    @strawberry.experimental.pydantic.type(User, fields=["hobby"])
+    class UserType:
+        pass
+
+    @strawberry.experimental.pydantic.type(Hobby, fields=["name"])
+    class HobbyType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(hobby=HobbyType(name="Skii"))
+
+    schema = strawberry.Schema(query=Query)
+
+    query = "{ user { hobby { name } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["hobby"]["name"] == "Skii"
+
+
+def test_basic_type_with_forwardrefs():
+    # ForwardRefs can't be resolved if models aren't defined at module level
+    @strawberry.experimental.pydantic.type(HobbyLazy, fields=["name"])
+    class HobbyType:
+        pass
+
+    @strawberry.experimental.pydantic.type(UserLazy, fields=["hobby"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(hobby=HobbyType(name="Skii"))
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type HobbyType {
+      name: String!
+    }
+
+    type Query {
+      user: UserType!
+    }
+
+    type UserType {
+      hobby: HobbyType!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ user { hobby { name } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["hobby"]["name"] == "Skii"
+
+
+def test_basic_type_with_union_and_forwardrefs():
+    @strawberry.experimental.pydantic.type(BranchA, fields=["field_a"])
+    class BranchAType:
+        pass
+
+    @strawberry.experimental.pydantic.type(BranchB, fields=["field_b"])
+    class BranchBType:
+        pass
+
+    @strawberry.experimental.pydantic.type(UserUnionLazy, fields=["union_field"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(union_field=BranchBType(field_b=10))
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type BranchAType {
+      fieldA: String!
+    }
+
+    union BranchATypeBranchBType = BranchAType | BranchBType
+
+    type BranchBType {
+      fieldB: Int!
+    }
+
+    type Query {
+      user: UserType!
+    }
+
+    type UserType {
+      unionField: BranchATypeBranchBType!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ user { unionField { ... on BranchBType { fieldB } } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["unionField"]["fieldB"] == 10
+
+
+def test_basic_type_with_list_and_forwardrefs():
+    @strawberry.experimental.pydantic.type(BranchB, fields=["field_b"])
+    class BranchBType:
+        pass
+
+    @strawberry.experimental.pydantic.type(UserListLazy, fields=["list_field"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(list_field=[BranchBType(field_b=10)])
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type BranchBType {
+      fieldB: Int!
+    }
+
+    type Query {
+      user: UserType!
+    }
+
+    type UserType {
+      listField: [BranchBType!]!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ user { listField { fieldB } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["listField"][0]["fieldB"] == 10
+
+
+def test_basic_type_with_optional_forwardrefs():
+    @strawberry.experimental.pydantic.type(BranchB, fields=["field_b"])
+    class BranchBType:
+        pass
+
+    @strawberry.experimental.pydantic.type(UserOptionalLazy, fields=["optional_field"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(optional_field=BranchBType(field_b=10))
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type BranchBType {
+      fieldB: Int!
+    }
+
+    type Query {
+      user: UserType!
+    }
+
+    type UserType {
+      optionalField: BranchBType
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ user { optionalField { fieldB } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["optionalField"]["fieldB"] == 10
+
+
+def test_basic_type_with_optional_nested_model():
+    class Hobby(pydantic.BaseModel):
+        name: str
+
+    @strawberry.experimental.pydantic.type(Hobby, fields=["name"])
+    class HobbyType:
+        pass
+
+    class User(pydantic.BaseModel):
+        hobby: Optional[Hobby]
 
     @strawberry.experimental.pydantic.type(User, fields=["hobby"])
     class UserType:
