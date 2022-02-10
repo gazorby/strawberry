@@ -30,6 +30,7 @@ from strawberry.experimental.pydantic.conversion import (
     convert_strawberry_class_to_pydantic_model,
 )
 from strawberry.experimental.pydantic.fields import get_basic_type
+from strawberry.experimental.pydantic.nested import process_nested_fields
 from strawberry.experimental.pydantic.utils import (
     DataclassCreationFields,
     ensure_all_auto_fields_in_pydantic,
@@ -42,8 +43,6 @@ from strawberry.object_type import _process_type, _wrap_dataclass
 from strawberry.schema_directive import StrawberrySchemaDirective
 from strawberry.types.type_resolver import _get_fields
 from strawberry.types.types import TypeDefinition
-
-from strawberry.experimental.pydantic.nested import process_nested_fields
 
 from .exceptions import MissingFieldsListError, UnregisteredTypeException
 

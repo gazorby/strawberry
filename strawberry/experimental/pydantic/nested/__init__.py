@@ -1,33 +1,29 @@
-from dataclasses import Field
 import sys
+from dataclasses import Field
 from typing import Any, List, Set, Type, Union
+
 import pydantic
 
+from strawberry.annotation import StrawberryAnnotation
+from strawberry.arguments import UNSET
 from strawberry.field import StrawberryField
 
-from strawberry.annotation import StrawberryAnnotation
+from .base import NestedBackend, NestedPydanticBackend, RelationFieldError
 
-from strawberry.arguments import UNSET
-
-from .base import (
-    RelationFieldError,
-    NestedPydanticBackend,
-    NestedBackend,
-)
 
 try:
-    from .ormar import NestedOrmarBackend
-
     # Import in second to avoid clashes
     import ormar
+
+    from .ormar import NestedOrmarBackend
 except ModuleNotFoundError:  # pragma: no cover
     NestedOrmarBackend = None
 
 try:
-    from .sqlmodel import NestedSQLModelBackend
-
     # Import in second to avoid clashes
     import sqlmodel
+
+    from .sqlmodel import NestedSQLModelBackend
 except ModuleNotFoundError:  # pragma: no cover
     NestedSQLModelBackend = None
 

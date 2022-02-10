@@ -1,5 +1,6 @@
-import pydantic
 from typing import List, Optional, Union
+
+import pydantic
 
 
 # ForwardRef

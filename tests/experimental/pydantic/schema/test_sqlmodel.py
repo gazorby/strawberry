@@ -1,8 +1,11 @@
 import textwrap
-import strawberry
-from sqlmodel import SQLModel, Field, Relationship
 from typing import List, Optional
+
 import pytest
+
+from sqlmodel import Field, Relationship, SQLModel
+
+import strawberry
 
 
 class Manager(SQLModel, table=True):

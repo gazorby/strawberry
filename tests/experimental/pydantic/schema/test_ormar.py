@@ -1,10 +1,13 @@
-import ormar
-from typing import List, Optional, ForwardRef
-import strawberry
 import textwrap
-import databases
-import sqlalchemy
+from typing import ForwardRef, List, Optional
+
 import pytest
+
+import databases
+import ormar
+import sqlalchemy
+
+import strawberry
 
 
 database = databases.Database("sqlite:///db.sqlite")

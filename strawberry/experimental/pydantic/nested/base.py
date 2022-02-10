@@ -110,7 +110,7 @@ class NestedBackend(ABC):
 
     @abstractmethod
     def _post_init(self) -> None:
-        """Called during __init__. Must fill self.child_model if the field is a relation."""
+        """Called during __init__. Must fill self.child_model if field is a relation."""
         pass  # pragma: no cover
 
     @abstractmethod
@@ -122,8 +122,6 @@ class NestedBackend(ABC):
 class RelationFieldError(Exception):
     """Field is not a relation (does not reference another type)."""
 
-    pass
-
 
 class NestedPydanticBackend(NestedBackend):
     def _post_init(self):
@@ -133,7 +131,9 @@ class NestedPydanticBackend(NestedBackend):
             and issubclass(self.field.type_, pydantic.BaseModel)
         ):
             self.child_model = [self.field.type_]
-        elif _is_union(self.field.type_) and any(_may_be_model(t) for t in self.field.type_.__args__):  # type: ignore
+        elif _is_union(self.field.type_) and any(
+            _may_be_model(t) for t in self.field.type_.__args__  # type: ignore
+        ):
             self.child_model = self.field.type_.__args__  # type: ignore
 
     def _process_type(self, typ, idx: int = 0) -> type:
@@ -186,8 +186,7 @@ class NestedPydanticBackend(NestedBackend):
     def required(self) -> bool:
         # Check outermost type as `self.model.field.required` can be of type Undefined
         return (
-            getattr(get_type_hints(self.model)[self.name], "_name", None)
-            is not "Optional"
+            getattr(get_type_hints(self.model)[self.name], "_name", None) != "Optional"
             if isinstance(self.field.required, UndefinedType)
             else self.field.required
         )

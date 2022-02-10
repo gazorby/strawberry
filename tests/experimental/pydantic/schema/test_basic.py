@@ -1,12 +1,10 @@
 import textwrap
 from enum import Enum
-from typing import List, Optional, Union, Callable
-import pytest
+from typing import List, Optional, Union
+
 import pydantic
 
 import strawberry
-
-from strawberry.experimental.pydantic.exceptions import UnsupportedTypeError
 
 from .lazy_types import (
     BranchA,
@@ -14,8 +12,8 @@ from .lazy_types import (
     HobbyLazy,
     UserLazy,
     UserListLazy,
-    UserUnionLazy,
     UserOptionalLazy,
+    UserUnionLazy,
 )
 
 
@@ -774,6 +772,7 @@ def test_basic_type_with_interface():
     assert not result.errors
     assert result.data["user"]["interfaceField"]["baseField"] == "abc"
     assert result.data["user"]["interfaceField"]["fieldB"] == 10
+
 
 def test_field_exclude():
     class UserModel(pydantic.BaseModel):
