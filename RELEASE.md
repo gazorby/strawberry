@@ -1,3 +1,5 @@
+Release type: minor
+
 - Add Full support for deriving nested pydantic models (including when using `List`, `Optional`, `Union` and `ForwardRef`)
 - Support for deriving [ormar](https://github.com/collerek/ormar) models with relationships (`ForeignKey`, `ManyToMany`, and reverse relations)
 - Support for deriving [SQLModel](https://github.com/tiangolo/sqlmodel) models with `Relationship` fields
