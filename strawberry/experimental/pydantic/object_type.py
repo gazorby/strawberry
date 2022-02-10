@@ -174,11 +174,7 @@ def type(
             set(name for name, typ in existing_fields.items() if typ == strawberry.auto)
         )
 
-        exclude_set = set(exclude or [])
-        fields_set = fields_set - exclude_set
         fields_set = fields_set.union(set(related or []))
-
-        nested_fields = process_nested_fields(cls, fields_set, model)
 
         if all_fields or exclude:
             if fields_set:
@@ -192,6 +188,11 @@ def type(
 
         if not fields_set:
             raise MissingFieldsListError(cls)
+
+        exclude_set = set(exclude or [])
+        fields_set = fields_set - exclude_set
+
+        nested_fields = process_nested_fields(cls, fields_set, model)
 
         # Nested fields are already strawberry fields,
         # we'll add them after model fields

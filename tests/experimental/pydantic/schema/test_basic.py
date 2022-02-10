@@ -774,3 +774,39 @@ def test_basic_type_with_interface():
     assert not result.errors
     assert result.data["user"]["interfaceField"]["baseField"] == "abc"
     assert result.data["user"]["interfaceField"]["fieldB"] == 10
+
+def test_field_exclude():
+    class UserModel(pydantic.BaseModel):
+        age: int
+        password: Optional[str]
+
+    @strawberry.experimental.pydantic.type(UserModel, exclude=["age"])
+    class User:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> User:
+            return User(password="ABC")
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type Query {
+      user: User!
+    }
+
+    type User {
+      password: String
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ user { password } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["password"] == "ABC"
