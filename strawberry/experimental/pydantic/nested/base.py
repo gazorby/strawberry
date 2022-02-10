@@ -1,4 +1,3 @@
-import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from inspect import isclass
@@ -13,6 +12,8 @@ from typing import (
     Union,
     get_type_hints,
 )
+
+from typing_extensions import get_origin
 
 from strawberry.type import StrawberryType
 
@@ -131,7 +132,7 @@ class NestedPydanticBackend(NestedBackend):
             and issubclass(self.field.type_, pydantic.BaseModel)
         ):
             self.child_model = [self.field.type_]
-        elif _is_union(self.field.type_) and any(
+        elif get_origin(self.field.type_) is Union and any(
             _may_be_model(t) for t in self.field.type_.__args__  # type: ignore
         ):
             self.child_model = self.field.type_.__args__  # type: ignore
@@ -203,10 +204,6 @@ def _may_be_model(typ: Any) -> bool:
     )
 
 
-def _is_union(typ: type) -> bool:
-    return type(typ) is typing._UnionGenericAlias  # type: ignore
-
-
 def extract_type_list(typ: Any) -> Tuple[List[type], Tuple[Any]]:
     """Extract outer types from the given type.
 
@@ -228,7 +225,7 @@ def extract_type_list(typ: Any) -> Tuple[List[type], Tuple[Any]]:
         if (
             not hasattr(inner, "_name")
             or inner._name not in ["Optional", "List"]
-            and not _is_union(inner)
+            and not get_origin(inner) is Union
         ):
             raise UnsupportedTypeError(f"Unsupported type: {inner}")
         if inner._name == "Optional":
@@ -239,7 +236,7 @@ def extract_type_list(typ: Any) -> Tuple[List[type], Tuple[Any]]:
         elif inner._name == "List":
             type_list.append(List)
             inner_type = inner.__args__[0]
-        elif _is_union(inner):
+        elif get_origin(inner) is Union:
             inner = inner.__args__
             break
         inner = inner_type

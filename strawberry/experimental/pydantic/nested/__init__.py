@@ -13,7 +13,7 @@ from .base import NestedBackend, NestedPydanticBackend, RelationFieldError
 
 try:
     # Import in second to avoid clashes
-    import ormar
+    from ormar import Model
 
     from .ormar import NestedOrmarBackend
 except ModuleNotFoundError:  # pragma: no cover
@@ -21,7 +21,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 try:
     # Import in second to avoid clashes
-    import sqlmodel
+    from sqlmodel import SQLModel
 
     from .sqlmodel import NestedSQLModelBackend
 except ModuleNotFoundError:  # pragma: no cover
@@ -30,13 +30,11 @@ except ModuleNotFoundError:  # pragma: no cover
 
 def _nested_field_factory(
     name: str,
-    model: Union[
-        Type["ormar.Model"], Type["sqlmodel.SQLModel"], Type[pydantic.BaseModel]
-    ],
+    model: Union[Type["Model"], Type["SQLModel"], Type[pydantic.BaseModel]],
 ) -> NestedBackend:
-    if NestedOrmarBackend and issubclass(model, ormar.Model):
+    if NestedOrmarBackend and issubclass(model, Model):
         return NestedOrmarBackend(name, model)
-    elif NestedSQLModelBackend and issubclass(model, sqlmodel.SQLModel):
+    elif NestedSQLModelBackend and issubclass(model, SQLModel):
         return NestedSQLModelBackend(name, model)
     assert issubclass(model, pydantic.BaseModel)
     return NestedPydanticBackend(name, model)
@@ -48,7 +46,7 @@ def process_nested_fields(
     """Infer strawberry types from relations in pydantic based models."""
     fields: List[Field] = []
     for name in fields_set:
-        if name in type_class.__annotations__:
+        if name in getattr(type_class, "__annotations__", {}):
             continue
         try:
             field = _nested_field_factory(name, model)
