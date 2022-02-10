@@ -40,7 +40,8 @@ class NestedOrmarBackend(NestedBackend):
         else:
             strawberry_type = LazyModelType[self.child_model]  # type: ignore
 
-        # TODO Is it ok to make inner type optional by default for both ManyToManyField and FieldAccessor?
+        # TODO Is it ok to make inner type optional by default
+        # for both ManyToManyField and FieldAccessor?
         if isinstance(self.f_info, (FieldAccessor, ormar.ManyToManyField)):
             strawberry_type = List[Optional[strawberry_type]]
         else:
