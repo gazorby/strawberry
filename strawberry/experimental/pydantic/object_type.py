@@ -184,8 +184,6 @@ def type(
             fields_set = set(model_fields.keys())
             auto_fields_set = set(model_fields.keys())
 
-        # This decorator add exclude and related fields
-        # features not present in strawberry
         exclude_set = set(exclude or [])
         fields_set = fields_set - exclude_set
         fields_set = fields_set.union(set(related or []))
@@ -198,6 +196,7 @@ def type(
         # Nested fields are already strawberry fields,
         # we'll add them after model fields
         fields_set = fields_set - set(f.name for f in nested_fields)
+        auto_fields_set = auto_fields_set - set(f.name for f in nested_fields)
 
         if all_fields and set(existing_fields) - set(nested_fields):
             warnings.warn(
