@@ -2,13 +2,10 @@ from typing import Any, List
 
 from sqlalchemy.orm.relationships import RelationshipProperty
 
-from .base import (
-    NestedPydanticField,
-    extract_type_list,
-)
+from .base import NestedPydanticBackend, extract_type_list
 
 
-class NestedSQLModelField(NestedPydanticField):
+class NestedSQLModelBackend(NestedPydanticBackend):
     def _post_init(self) -> None:
         # Find the related model
         attr = getattr(self.model, self.name)

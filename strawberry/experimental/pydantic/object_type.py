@@ -174,6 +174,12 @@ def type(
             set(name for name, typ in existing_fields.items() if typ == strawberry.auto)
         )
 
+        exclude_set = set(exclude or [])
+        fields_set = fields_set - exclude_set
+        fields_set = fields_set.union(set(related or []))
+
+        nested_fields = process_nested_fields(cls, fields_set, model)
+
         if all_fields or exclude:
             if fields_set:
                 warnings.warn(
@@ -184,12 +190,6 @@ def type(
             fields_set = set(model_fields.keys())
             auto_fields_set = set(model_fields.keys())
 
-        exclude_set = set(exclude or [])
-        fields_set = fields_set - exclude_set
-        fields_set = fields_set.union(set(related or []))
-
-        nested_fields = process_nested_fields(cls, fields_set, model)
-
         if not fields_set:
             raise MissingFieldsListError(cls)
 
@@ -197,13 +197,6 @@ def type(
         # we'll add them after model fields
         fields_set = fields_set - set(f.name for f in nested_fields)
         auto_fields_set = auto_fields_set - set(f.name for f in nested_fields)
-
-        if all_fields and set(existing_fields) - set(nested_fields):
-            warnings.warn(
-                "Using all_fields overrides any non-relational explicitly defined fields "
-                "in the model, using both is likely a bug",
-                stacklevel=2,
-            )
 
         ensure_all_auto_fields_in_pydantic(
             model=model, auto_fields=auto_fields_set, cls_name=cls.__name__

@@ -208,6 +208,22 @@ def test_nested_type_unordered(clear_types):
 
     schema = strawberry.Schema(query=Query)
 
+    expected_schema = """
+    type HeroType {
+      team: TeamType
+    }
+
+    type Query {
+      hero: HeroType!
+    }
+
+    type TeamType {
+      name: String!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
     query = "{ hero { team { name } } }"
 
     result = schema.execute_sync(query)
@@ -232,6 +248,22 @@ def test_one_to_many(clear_types):
             return TeamType(heroes=[HeroType(name="Skii"), HeroType(name="Chris")])
 
     schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type HeroType {
+      name: String!
+    }
+
+    type Query {
+      team: TeamType!
+    }
+
+    type TeamType {
+      heroes: [HeroType!]!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
 
     query = "{ team { heroes { name } } }"
 

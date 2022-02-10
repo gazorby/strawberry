@@ -1,6 +1,6 @@
 from dataclasses import Field
 import sys
-from typing import Any, List, Set, Type
+from typing import Any, List, Set, Type, Union
 import pydantic
 
 from strawberry.field import StrawberryField
@@ -11,42 +11,45 @@ from strawberry.arguments import UNSET
 
 from .base import (
     RelationFieldError,
-    NestedPydanticField,
-    NestedField,
+    NestedPydanticBackend,
+    NestedBackend,
 )
 
 try:
-    from .ormar import NestedOrmarField
+    from .ormar import NestedOrmarBackend
 
     # Import in second to avoid clashes
     import ormar
-except ModuleNotFoundError:
-    NestedOrmarField = None
+except ModuleNotFoundError:  # pragma: no cover
+    NestedOrmarBackend = None
 
 try:
-    from .sqlmodel import NestedSQLModelField
+    from .sqlmodel import NestedSQLModelBackend
 
     # Import in second to avoid clashes
     import sqlmodel
-except ModuleNotFoundError:
-    NestedSQLModelField = None
+except ModuleNotFoundError:  # pragma: no cover
+    NestedSQLModelBackend = None
 
 
-def _nested_field_factory(name, model) -> NestedField:
-    if NestedOrmarField and issubclass(model, ormar.Model):
-        return NestedOrmarField(name, model)
-    elif NestedSQLModelField and issubclass(model, sqlmodel.SQLModel):
-        return NestedSQLModelField(name, model)
-    elif issubclass(model, pydantic.BaseModel):
-        return NestedPydanticField(name, model)
-
-    raise Exception("Nested {model} is not supported.")
+def _nested_field_factory(
+    name: str,
+    model: Union[
+        Type["ormar.Model"], Type["sqlmodel.SQLModel"], Type[pydantic.BaseModel]
+    ],
+) -> NestedBackend:
+    if NestedOrmarBackend and issubclass(model, ormar.Model):
+        return NestedOrmarBackend(name, model)
+    elif NestedSQLModelBackend and issubclass(model, sqlmodel.SQLModel):
+        return NestedSQLModelBackend(name, model)
+    assert issubclass(model, pydantic.BaseModel)
+    return NestedPydanticBackend(name, model)
 
 
 def process_nested_fields(
     type_class: Any, fields_set: Set[str], model: Type[pydantic.BaseModel]
 ) -> List[Field]:
-    """Infer strawberry types from relations in ormar models."""
+    """Infer strawberry types from relations in pydantic based models."""
     fields: List[Field] = []
     for name in fields_set:
         if name in type_class.__annotations__:

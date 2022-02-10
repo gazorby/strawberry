@@ -1,10 +1,12 @@
 import textwrap
 from enum import Enum
-from typing import List, Optional, Union
-
+from typing import List, Optional, Union, Callable
+import pytest
 import pydantic
 
 import strawberry
+
+from strawberry.experimental.pydantic.exceptions import UnsupportedTypeError
 
 from .lazy_types import (
     BranchA,
@@ -16,9 +18,6 @@ from .lazy_types import (
     UserOptionalLazy,
 )
 
-# import debugpy
-# debugpy.listen(("0.0.0.0", 5678))
-# debugpy.wait_for_client()
 
 def test_basic_type_field_list():
     class UserModel(pydantic.BaseModel):
@@ -294,57 +293,6 @@ def test_basic_type_with_forwardrefs():
 
     assert not result.errors
     assert result.data["user"]["hobby"]["name"] == "Skii"
-
-
-def test_basic_type_with_union_and_forwardrefs():
-    @strawberry.experimental.pydantic.type(BranchA, fields=["field_a"])
-    class BranchAType:
-        pass
-
-    @strawberry.experimental.pydantic.type(BranchB, fields=["field_b"])
-    class BranchBType:
-        pass
-
-    @strawberry.experimental.pydantic.type(UserUnionLazy, fields=["union_field"])
-    class UserType:
-        pass
-
-    @strawberry.type
-    class Query:
-        @strawberry.field
-        def user(self) -> UserType:
-            return UserType(union_field=BranchBType(field_b=10))
-
-    schema = strawberry.Schema(query=Query)
-
-    expected_schema = """
-    type BranchAType {
-      fieldA: String!
-    }
-
-    union BranchATypeBranchBType = BranchAType | BranchBType
-
-    type BranchBType {
-      fieldB: Int!
-    }
-
-    type Query {
-      user: UserType!
-    }
-
-    type UserType {
-      unionField: BranchATypeBranchBType!
-    }
-    """
-
-    assert str(schema) == textwrap.dedent(expected_schema).strip()
-
-    query = "{ user { unionField { ... on BranchBType { fieldB } } } }"
-
-    result = schema.execute_sync(query)
-
-    assert not result.errors
-    assert result.data["user"]["unionField"]["fieldB"] == 10
 
 
 def test_basic_type_with_list_and_forwardrefs():
@@ -632,6 +580,117 @@ def test_basic_type_with_union_pydantic_types():
             return UserType(union_field=BranchB(field_b=10))
 
     schema = strawberry.Schema(query=Query)
+
+    query = "{ user { unionField { ... on BranchBType { fieldB } } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["unionField"]["fieldB"] == 10
+
+
+def test_basic_type_with_optional_union():
+    class BranchA(pydantic.BaseModel):
+        field_a: str
+
+    class BranchB(pydantic.BaseModel):
+        field_b: int
+
+    class User(pydantic.BaseModel):
+        union_field: Optional[Union[BranchA, BranchB]]
+
+    @strawberry.experimental.pydantic.type(BranchA, fields=["field_a"])
+    class BranchAType:
+        pass
+
+    @strawberry.experimental.pydantic.type(BranchB, fields=["field_b"])
+    class BranchBType:
+        pass
+
+    @strawberry.experimental.pydantic.type(User, fields=["union_field"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(union_field=BranchBType(field_b=10))
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type BranchAType {
+      fieldA: String!
+    }
+
+    union BranchATypeBranchBType = BranchAType | BranchBType
+
+    type BranchBType {
+      fieldB: Int!
+    }
+
+    type Query {
+      user: UserType!
+    }
+
+    type UserType {
+      unionField: BranchATypeBranchBType
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ user { unionField { ... on BranchBType { fieldB } } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["user"]["unionField"]["fieldB"] == 10
+
+
+def test_basic_type_with_union_and_forwardrefs():
+    @strawberry.experimental.pydantic.type(BranchA, fields=["field_a"])
+    class BranchAType:
+        pass
+
+    @strawberry.experimental.pydantic.type(BranchB, fields=["field_b"])
+    class BranchBType:
+        pass
+
+    @strawberry.experimental.pydantic.type(UserUnionLazy, fields=["union_field"])
+    class UserType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def user(self) -> UserType:
+            return UserType(union_field=BranchBType(field_b=10))
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type BranchAType {
+      fieldA: String!
+    }
+
+    union BranchATypeBranchBType = BranchAType | BranchBType
+
+    type BranchBType {
+      fieldB: Int!
+    }
+
+    type Query {
+      user: UserType!
+    }
+
+    type UserType {
+      unionField: BranchATypeBranchBType!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
 
     query = "{ user { unionField { ... on BranchBType { fieldB } } } }"
 

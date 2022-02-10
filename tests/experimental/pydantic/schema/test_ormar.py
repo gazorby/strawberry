@@ -1,10 +1,11 @@
 import ormar
-from typing import Optional, ForwardRef
+from typing import List, Optional, ForwardRef
 import strawberry
 import textwrap
 import databases
 import sqlalchemy
 import pytest
+
 
 database = databases.Database("sqlite:///db.sqlite")
 metadata = sqlalchemy.MetaData()
@@ -29,7 +30,10 @@ class Team(ormar.Model):
     id: int = ormar.Integer(primary_key=True)
     name: str = ormar.String(index=True, max_length=255)
     headquarters: Optional[str] = ormar.String(nullable=True, max_length=255)
-    manager: int = ormar.ForeignKey(Manager, nullable=False, related_name="team")
+    manager: Manager = ormar.ForeignKey(
+        Manager, nullable=False, related_name="managed_teams"
+    )
+    referrers: List[Manager] = ormar.ManyToMany(Manager, related_name="referring_teams")
 
 
 class Hero(ormar.Model):
@@ -49,12 +53,9 @@ class Hero(ormar.Model):
 
 @pytest.fixture
 def clear_types():
-    if hasattr(Team, "_strawberry_type"):
-        delattr(Team, "_strawberry_type")
-    if hasattr(Hero, "_strawberry_type"):
-        delattr(Hero, "_strawberry_type")
-    if hasattr(Manager, "_strawberry_type"):
-        delattr(Manager, "_strawberry_type")
+    for model in (Team, Hero, Manager):
+        if hasattr(model, "_strawberry_type"):
+            delattr(model, "_strawberry_type")
 
 
 def test_all_fields(clear_types):
@@ -142,6 +143,22 @@ def test_one_to_one_optional(clear_types):
 
     schema = strawberry.Schema(query=Query)
 
+    expected_schema = """
+    type HeroType {
+      team: TeamType
+    }
+
+    type Query {
+      hero: HeroType!
+    }
+
+    type TeamType {
+      name: String!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
     query = "{ hero { team { name } } }"
 
     result = schema.execute_sync(query)
@@ -166,6 +183,22 @@ def test_one_to_one_required(clear_types):
             return TeamType(manager=ManagerType(name="Skii"))
 
     schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type ManagerType {
+      name: String!
+    }
+
+    type Query {
+      team: TeamType!
+    }
+
+    type TeamType {
+      manager: ManagerType!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
 
     query = "{ team { manager { name } } }"
 
@@ -192,6 +225,22 @@ def test_nested_type_unordered(clear_types):
 
     schema = strawberry.Schema(query=Query)
 
+    expected_schema = """
+    type HeroType {
+      team: TeamType
+    }
+
+    type Query {
+      hero: HeroType!
+    }
+
+    type TeamType {
+      name: String!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
     query = "{ hero { team { name } } }"
 
     result = schema.execute_sync(query)
@@ -200,7 +249,7 @@ def test_nested_type_unordered(clear_types):
     assert result.data["hero"]["team"]["name"] == "Skii"
 
 
-def test_one_to_many(clear_types):
+def test_reverse_relation(clear_types):
     @strawberry.experimental.pydantic.type(Team, related=["heroes"])
     class TeamType:
         pass
@@ -217,6 +266,22 @@ def test_one_to_many(clear_types):
 
     schema = strawberry.Schema(query=Query)
 
+    expected_schema = """
+    type HeroType {
+      name: String!
+    }
+
+    type Query {
+      team: TeamType!
+    }
+
+    type TeamType {
+      heroes: [HeroType]
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
     query = "{ team { heroes { name } } }"
 
     result = schema.execute_sync(query)
@@ -224,6 +289,50 @@ def test_one_to_many(clear_types):
     assert not result.errors
     assert result.data["team"]["heroes"][0]["name"] == "Skii"
     assert result.data["team"]["heroes"][1]["name"] == "Chris"
+
+
+def test_one_to_many(clear_types):
+    @strawberry.experimental.pydantic.type(Team, related=["referrers"])
+    class TeamType:
+        pass
+
+    @strawberry.experimental.pydantic.type(Manager, fields=["name"])
+    class ManagerType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def team(self) -> TeamType:
+            return TeamType(
+                referrers=[ManagerType(name="Skii"), ManagerType(name="Chris")]
+            )
+
+    schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type ManagerType {
+      name: String!
+    }
+
+    type Query {
+      team: TeamType!
+    }
+
+    type TeamType {
+      referrers: [ManagerType]
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
+
+    query = "{ team { referrers { name } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["team"]["referrers"][0]["name"] == "Skii"
+    assert result.data["team"]["referrers"][1]["name"] == "Chris"
 
 
 def test_forwardref(clear_types):
@@ -238,6 +347,19 @@ def test_forwardref(clear_types):
             return HeroType(name="Chris", master=HeroType(name="Skii", master=None))
 
     schema = strawberry.Schema(query=Query)
+
+    expected_schema = """
+    type HeroType {
+      name: String!
+      master: HeroType
+    }
+
+    type Query {
+      hero: HeroType!
+    }
+    """
+
+    assert str(schema) == textwrap.dedent(expected_schema).strip()
 
     query = "{ hero { master { name } } }"
 
