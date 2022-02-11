@@ -53,7 +53,7 @@ class LazyModelType(LazyType, Generic[BaseModel]):
         # We need to redefine the class each time to make sure
         # that params passed to typing.Union are of distincts types
         @dataclass(frozen=True)
-        class LazyModelType(cls):
+        class LazyModelType(cls):  # type: ignore
             pass
 
         # strawberry.LazyType wants some positional arguments
@@ -80,7 +80,7 @@ class LazyForwardRefType(LazyType, Generic[BaseModel, FieldName, Index]):
         # We need to redefine the class each time to make sure
         # that params passed to typing.Union are of distincts types
         @dataclass(frozen=True)
-        class LazyForwardRefType(cls):
+        class LazyForwardRefType(cls):  # type: ignore
             pass
 
         model, name, index = params
