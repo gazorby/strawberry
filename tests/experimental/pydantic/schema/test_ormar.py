@@ -294,6 +294,41 @@ def test_reverse_relation(clear_types):
     assert result.data["team"]["heroes"][1]["name"] == "Chris"
 
 
+def test_all_fields_and_reverse_relation(clear_types):
+    @strawberry.experimental.pydantic.type(Manager, fields=["name"])
+    class ManagerType:
+        pass
+
+    @strawberry.experimental.pydantic.type(Team, all_fields=True, related=["heroes"])
+    class TeamType:
+        pass
+
+    @strawberry.experimental.pydantic.type(Hero, fields=["name"])
+    class HeroType:
+        pass
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def team(self) -> TeamType:
+            return TeamType(
+                name="Avengers",
+                manager="Tony",
+                referrers=[ManagerType(name="Hulk")],
+                heroes=[HeroType(name="Skii"), HeroType(name="Chris")],
+            )
+
+    schema = strawberry.Schema(query=Query)
+
+    query = "{ team { heroes { name } } }"
+
+    result = schema.execute_sync(query)
+
+    assert not result.errors
+    assert result.data["team"]["heroes"][0]["name"] == "Skii"
+    assert result.data["team"]["heroes"][1]["name"] == "Chris"
+
+
 def test_one_to_many(clear_types):
     @strawberry.experimental.pydantic.type(Team, related=["referrers"])
     class TeamType:

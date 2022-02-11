@@ -173,8 +173,6 @@ def type(
             set(name for name, typ in existing_fields.items() if typ == strawberry.auto)
         )
 
-        fields_set = fields_set.union(set(related or []))
-
         if all_fields or exclude:
             if fields_set:
                 warnings.warn(
@@ -184,6 +182,8 @@ def type(
                 )
             fields_set = set(model_fields.keys())
             auto_fields_set = set(model_fields.keys())
+
+        fields_set = fields_set.union(set(related or []))
 
         if not fields_set:
             raise MissingFieldsListError(cls)
