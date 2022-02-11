@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from inspect import isclass
+
+# from sqlalchemy.types
 from typing import (
     Any,
     Generic,
@@ -104,7 +106,7 @@ class NestedBackend(ABC):
     def __init__(self, name: str, model: Type[pydantic.BaseModel]) -> None:
         self.name = name
         self.model = model
-        self.child_model = None
+        self.child_model: Union[Tuple[Any, ...], Any, None] = None
         self._post_init()
         if not self.child_model:
             raise RelationFieldError()
@@ -115,7 +117,7 @@ class NestedBackend(ABC):
         pass  # pragma: no cover
 
     @abstractmethod
-    def get_strawberry_type(self) -> type:
+    def get_strawberry_type(self) -> object:
         """Return the corresponding strawberry type for the field."""
         pass  # pragma: no cover
 
@@ -131,13 +133,13 @@ class NestedPydanticBackend(NestedBackend):
             isclass(self.field.type_)
             and issubclass(self.field.type_, pydantic.BaseModel)
         ):
-            self.child_model = [self.field.type_]
+            self.child_model: Tuple[Any, ...] = (self.field.type_,)
         elif get_origin(self.field.type_) is Union and any(
             _may_be_model(t) for t in self.field.type_.__args__  # type: ignore
         ):
             self.child_model = self.field.type_.__args__  # type: ignore
 
-    def _process_type(self, typ, idx: int = 0) -> type:
+    def _process_type(self, typ, idx: int = 0) -> object:
         if isinstance(typ, ForwardRef):
             return LazyForwardRefType[self.model, self.name, idx]  # type: ignore
         elif isclass(typ) and issubclass(typ, pydantic.BaseModel):
@@ -145,7 +147,7 @@ class NestedPydanticBackend(NestedBackend):
         # Already a strawberry type
         return typ
 
-    def _process_union(self, union_types: List[type]) -> type:
+    def _process_union(self, union_types: Tuple[Any, ...]) -> Union[Any, Any]:
         """Build an Union type out of a type params.
 
         Python < 3.11 don't allow the `typing.Union[*params]` syntax
@@ -154,19 +156,18 @@ class NestedPydanticBackend(NestedBackend):
         """
         assert len(union_types) > 1
 
-        union = None
+        union: Union[Any, Any] = None
         for i, (typ_a, typ_b) in enumerate(zip(union_types, union_types[1:])):
             typ_a = self._process_type(typ_a, i)
             typ_b = self._process_type(typ_b, i + 1)
             union = (
-                Union[typ_a, typ_b]  # type: ignore
+                Union[typ_a, typ_b]
                 if union is None
-                else Union[union, Union[typ_a, typ_b]]  # type: ignore
+                else Union[union, Union[typ_a, typ_b]]
             )
-        assert union is not None  # mypy
         return union
 
-    def get_strawberry_type(self) -> type:
+    def get_strawberry_type(self) -> object:
         none_in_union = False
         if len(self.child_model) > 1:
             strawberry_type = self._process_union(self.child_model)
@@ -179,7 +180,7 @@ class NestedPydanticBackend(NestedBackend):
             strawberry_type = typ[strawberry_type]
 
         if none_in_union or not self.required:
-            strawberry_type = Optional[strawberry_type]  # type: ignore
+            strawberry_type = Optional[strawberry_type]
 
         return strawberry_type
 
@@ -204,7 +205,7 @@ def _may_be_model(typ: Any) -> bool:
     )
 
 
-def extract_type_list(typ: Any) -> Tuple[List[type], Tuple[Any]]:
+def extract_type_list(typ: Any) -> Tuple[List[Any], Tuple[Any, ...]]:
     """Extract outer types from the given type.
 
     Return: ([outer_types], (inner_types))
@@ -216,7 +217,7 @@ def extract_type_list(typ: Any) -> Tuple[List[type], Tuple[Any]]:
         part of a Union:
         - Optional[Union[str, int]] -> ([Optional], (str, int))
     """
-    type_list: List[type] = []
+    type_list: List[Any] = []
     inner: Any = typ
     while inner is not None:
         inner_type = None

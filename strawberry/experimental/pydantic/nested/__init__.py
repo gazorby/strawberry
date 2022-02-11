@@ -1,6 +1,7 @@
 import sys
 from dataclasses import Field
-from typing import Any, List, Set, Type, Union
+from importlib.util import find_spec
+from typing import TYPE_CHECKING, Any, List, Set, Type, Union
 
 import pydantic
 
@@ -11,31 +12,33 @@ from strawberry.field import StrawberryField
 from .base import NestedBackend, NestedPydanticBackend, RelationFieldError
 
 
-try:
-    # Import in second to avoid clashes
+if TYPE_CHECKING:
     from ormar import Model
-
-    from .ormar import NestedOrmarBackend
-except ModuleNotFoundError:  # pragma: no cover
-    NestedOrmarBackend = None
-
-try:
-    # Import in second to avoid clashes
     from sqlmodel import SQLModel
 
-    from .sqlmodel import NestedSQLModelBackend
-except ModuleNotFoundError:  # pragma: no cover
-    NestedSQLModelBackend = None
+_ormar_found = find_spec("ormar")
+_sqlmodel_found = find_spec("sqlmodel")
 
 
 def _nested_field_factory(
     name: str,
     model: Union[Type["Model"], Type["SQLModel"], Type[pydantic.BaseModel]],
 ) -> NestedBackend:
-    if NestedOrmarBackend and issubclass(model, Model):
-        return NestedOrmarBackend(name, model)
-    elif NestedSQLModelBackend and issubclass(model, SQLModel):
-        return NestedSQLModelBackend(name, model)
+    if _ormar_found:
+        from ormar import Model
+
+        from .ormar import NestedOrmarBackend
+
+        if issubclass(model, Model):
+            return NestedOrmarBackend(name, model)
+
+    if _sqlmodel_found:
+        from sqlmodel import SQLModel
+
+        from .sqlmodel import NestedSQLModelBackend
+
+        if issubclass(model, SQLModel):
+            return NestedSQLModelBackend(name, model)
     assert issubclass(model, pydantic.BaseModel)
     return NestedPydanticBackend(name, model)
 

@@ -1,5 +1,6 @@
 from typing import Any, List
 
+from backports.cached_property import cached_property
 from sqlalchemy.orm.relationships import RelationshipProperty
 
 from .base import NestedPydanticBackend, extract_type_list
@@ -18,7 +19,7 @@ class NestedSQLModelBackend(NestedPydanticBackend):
             else:
                 self._required = True
 
-    @property
+    @cached_property
     def outer_types(self) -> List[Any]:
         return self._outer_types
 

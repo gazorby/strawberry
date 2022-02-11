@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, List, Optional, Type
+from typing import List, Optional, Type
 
 import ormar
+from ormar import Model
 from ormar.queryset.field_accessor import FieldAccessor
 from pydantic.fields import UndefinedType
 
@@ -9,9 +10,6 @@ from .base import ForwardRef, LazyModelType, NestedBackend  # type: ignore
 
 class NestedOrmarBackend(NestedBackend):
     def _post_init(self) -> None:
-        if TYPE_CHECKING:
-            self.child_model: Type[ormar.Model]
-
         if self.name in self.model.__fields__:
             self.field = self.model.__fields__[self.name]
 
@@ -21,11 +19,13 @@ class NestedOrmarBackend(NestedBackend):
                 return
 
             self.f_info = self.field.field_info
-            self.child_model = self.f_info.to
+            self.f_accessor = None
+            self.child_model: Optional[Type["Model"]] = self.f_info.to
             self._required = self.field.required
         elif isinstance(getattr(self.model, self.name, None), FieldAccessor):
             self.field = getattr(self.model, self.name)
-            self.f_info = self.field
+            assert isinstance(self.field, FieldAccessor)
+            self.f_accessor = self.field
             self.child_model = self.field._model
             self._required = False
 
@@ -42,10 +42,11 @@ class NestedOrmarBackend(NestedBackend):
 
         # TODO Is it ok to make inner type optional by default
         # for both ManyToManyField and FieldAccessor?
-        if isinstance(self.f_info, (FieldAccessor, ormar.ManyToManyField)):
-            strawberry_type = List[Optional[strawberry_type]]
+        if self.f_accessor is not None or isinstance(
+            self.f_info, ormar.ManyToManyField
+        ):
+            strawberry_type = List[Optional[strawberry_type]]  # type: ignore
         else:
-            assert isinstance(self.f_info, ormar.ForeignKeyField)
             strawberry_type = strawberry_type
 
         if isinstance(self._required, UndefinedType) or not self._required:
