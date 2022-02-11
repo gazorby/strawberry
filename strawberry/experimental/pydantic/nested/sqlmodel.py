@@ -11,7 +11,7 @@ class NestedSQLModelBackend(NestedPydanticBackend):
         # Find the related model
         attr = getattr(self.model, self.name)
         if attr.property.__class__ is RelationshipProperty:
-            self._outer_types, self.child_model = extract_type_list(
+            self._outer_types, self.child_type = extract_type_list(
                 self.model.__annotations__[self.name]
             )
             if self._outer_types:

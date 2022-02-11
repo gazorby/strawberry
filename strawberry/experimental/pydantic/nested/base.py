@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from inspect import isclass
-
-# from sqlalchemy.types
 from typing import (
     Any,
     Generic,
@@ -15,7 +13,7 @@ from typing import (
     get_type_hints,
 )
 
-from typing_extensions import get_origin
+from typing_extensions import get_args, get_origin
 
 from strawberry.type import StrawberryType
 
@@ -106,20 +104,18 @@ class NestedBackend(ABC):
     def __init__(self, name: str, model: Type[pydantic.BaseModel]) -> None:
         self.name = name
         self.model = model
-        self.child_model: Union[Tuple[Any, ...], Any, None] = None
+        self.child_type: Optional[Union[Tuple[Any, ...], Any]] = None
         self._post_init()
-        if not self.child_model:
+        if not self.child_type:
             raise RelationFieldError()
 
     @abstractmethod
     def _post_init(self) -> None:
-        """Called during __init__. Must fill self.child_model if field is a relation."""
-        pass  # pragma: no cover
+        """Called during __init__. Must fill self.child_type if field is a relation."""
 
     @abstractmethod
     def get_strawberry_type(self) -> object:
         """Return the corresponding strawberry type for the field."""
-        pass  # pragma: no cover
 
 
 class RelationFieldError(Exception):
@@ -133,11 +129,11 @@ class NestedPydanticBackend(NestedBackend):
             isclass(self.field.type_)
             and issubclass(self.field.type_, pydantic.BaseModel)
         ):
-            self.child_model: Tuple[Any, ...] = (self.field.type_,)
+            self.child_type: Tuple[Any, ...] = (self.field.type_,)
         elif get_origin(self.field.type_) is Union and any(
-            _may_be_model(t) for t in self.field.type_.__args__  # type: ignore
+            _may_be_model(t) for t in get_args(self.field.type_)
         ):
-            self.child_model = self.field.type_.__args__  # type: ignore
+            self.child_type = get_args(self.field.type_)
 
     def _process_type(self, typ, idx: int = 0) -> object:
         if isinstance(typ, ForwardRef):
@@ -169,11 +165,11 @@ class NestedPydanticBackend(NestedBackend):
 
     def get_strawberry_type(self) -> object:
         none_in_union = False
-        if len(self.child_model) > 1:
-            strawberry_type = self._process_union(self.child_model)
+        if len(self.child_type) > 1:
+            strawberry_type = self._process_union(self.child_type)
             none_in_union = any(t is None.__class__ for t in self.outer_types)
         else:
-            strawberry_type = self._process_type(self.child_model[0])
+            strawberry_type = self._process_type(self.child_type[0])
 
         # Rebuild outer types
         for typ in self.outer_types[-1::-1]:
@@ -230,15 +226,15 @@ def extract_type_list(typ: Any) -> Tuple[List[Any], Tuple[Any, ...]]:
         ):
             raise UnsupportedTypeError(f"Unsupported type: {inner}")
         if inner._name == "Optional":
-            optional_types = list(inner.__args__)
+            optional_types = list(get_args(inner))
             optional_types.pop(optional_types.index(None.__class__))
             inner_type = optional_types[0]
             type_list.append(Optional)
         elif inner._name == "List":
             type_list.append(List)
-            inner_type = inner.__args__[0]
+            inner_type = get_args(inner)[0]
         elif get_origin(inner) is Union:
-            inner = inner.__args__
+            inner = get_args(inner)
             break
         inner = inner_type
 
