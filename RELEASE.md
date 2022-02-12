@@ -3,7 +3,7 @@ Release type: minor
 - Add Full support for deriving nested pydantic models (including when using `List`, `Optional`, `Union` and `ForwardRef`)
 - Support for deriving [ormar](https://github.com/collerek/ormar) models with relationships (`ForeignKey`, `ManyToMany`, and reverse relations)
 - Support for deriving [SQLModel](https://github.com/tiangolo/sqlmodel) models with `Relationship` fields
-- Strawberry types declaration don't have to follow model declaration order (eg: childs can be defined before parents)
+- Strawberry type declarations don't have to follow model declarations order (eg: childs can be defined before parents)
 - Add a new `exclude` param to the `strawberry.experimental.pydantic.type` decorator, allowing to include all fields while excluding some
 - Add a new `related` param to the `strawberry.experimental.pydantic.type` decorator, allowing to include reverse relations of ormar models (they are not looked up when using `all_fields`)
 
@@ -58,18 +58,20 @@ type HobbyType {
 type UserType {
   name: String!
   hobby: HobbyType!
+}
 ```
+The `related` param is used to generate strawberry fields for reverse relations that are automatically created by ormar
 
 ## SLQModel
 
-SQLModel is another pydantic-based orm, that uses SQLAlchemy to define models. All relations are defined using the Relationship field:
+SQLModel is another pydantic-based orm, that uses SQLAlchemy to define models. All relations are defined using the `Relationship` field:
 
 ```python
-class Hobby(SQLModel):
+class Hobby(SQLModel, table=True):
     name: str
     users: List["User"] = Relationship(back_populates="hobby")
 
-class User(SQLModel):
+class User(SQLModel, table=True):
     name: str = Field()
     hobby: Hobby = Relationship(back_populates="users")
 
@@ -91,4 +93,5 @@ type HobbyType {
 type UserType {
   name: String!
   hobby: HobbyType!
+}
 ```
