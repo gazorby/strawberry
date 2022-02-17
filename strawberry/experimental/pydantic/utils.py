@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Any, List, NamedTuple, NoReturn, Set, Tuple, Type, Union, cast
+from typing import Any, Dict, List, NamedTuple, NoReturn, Set, Tuple, Type, Union, cast
 
 from pydantic import BaseModel
 from pydantic.fields import ModelField
@@ -19,6 +19,13 @@ from strawberry.utils.typing import (
     is_list,
     is_optional,
 )
+
+from ormar.fields.through_field import ThroughField
+from sqlmodel import SQLModel
+from sqlalchemy.orm.relationships import RelationshipProperty
+import ormar
+
+from strawberry.experimental.pydantic.orm import is_orm_field
 
 
 def normalize_type(type_) -> Any:
@@ -86,6 +93,9 @@ def get_default_factory_for_field(field: ModelField) -> Union[NoArgAnyCallable, 
 
     Returns optionally a NoArgAnyCallable representing a default_factory parameter
     """
+    if is_orm_field(field):
+        return UNSET
+
     default_factory = field.default_factory
     default = field.default
 
@@ -123,10 +133,10 @@ def get_default_factory_for_field(field: ModelField) -> Union[NoArgAnyCallable, 
 
 
 def ensure_all_auto_fields_in_pydantic(
-    model: Type[BaseModel], auto_fields: Set[str], cls_name: str
+    model: Type[BaseModel], auto_fields: Set[str], fields_set, cls_name: str
 ) -> Union[NoReturn, None]:
     # Raise error if user defined a strawberry.auto field not present in the model
-    non_existing_fields = list(auto_fields - model.__fields__.keys())
+    non_existing_fields = list(auto_fields - fields_set)
 
     if non_existing_fields:
         raise AutoFieldsNotInBaseModelError(
@@ -134,3 +144,26 @@ def ensure_all_auto_fields_in_pydantic(
         )
     else:
         return None
+
+
+def get_model_fields(model) -> Dict[str, Any]:
+    if issubclass(model, ormar.Model):
+        model_fields = {
+            name: getattr(model, name)
+            for name, f in model.Meta.model_fields.items()
+            if not issubclass(type(f), ThroughField)
+        }
+        model_fields.update(model.__fields__)
+        return model_fields
+
+    if issubclass(model, SQLModel):
+        model_fields = {
+            name: f
+            for name, f in model.__dict__.items()
+            if getattr(f, "property", None).__class__ is RelationshipProperty
+        }
+        model_fields.update(model.__fields__)
+        return model_fields
+
+    assert issubclass(model, BaseModel)
+    return model.__fields__

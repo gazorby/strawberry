@@ -16,6 +16,16 @@ metadata = sqlalchemy.MetaData()
 MasterRef = ForwardRef("Hero")
 
 
+class City(ormar.Model):
+    class Meta:
+        database = database
+        metadata = metadata
+
+    id: Optional[int] = ormar.Integer(primary_key=True, default=None)
+    name: str = ormar.String(max_length=255)
+    population: int = ormar.Integer()
+
+
 class Manager(ormar.Model):
     class Meta:
         database = database
@@ -56,43 +66,44 @@ class Hero(ormar.Model):
 
 @pytest.fixture
 def clear_types():
-    for model in (Team, Hero, Manager):
+    for model in (Team, Hero, Manager, City):
         if hasattr(model, "_strawberry_type"):
             delattr(model, "_strawberry_type")
 
 
 def test_all_fields(clear_types):
-    @strawberry.experimental.pydantic.type(Manager, all_fields=True)
-    class ManagerType:
+    @strawberry.experimental.pydantic.type(City, all_fields=True)
+    class CityType:
         pass
 
     @strawberry.type
     class Query:
         @strawberry.field
-        def manager(self) -> ManagerType:
-            return ManagerType(id=1, name="Dave")
+        def city(self) -> CityType:
+            return CityType(id=1, name="Gotham", population=100000)
 
     schema = strawberry.Schema(query=Query)
 
     expected_schema = """
-    type ManagerType {
+    type CityType {
       name: String!
+      population: Int!
       id: Int
     }
 
     type Query {
-      manager: ManagerType!
+      city: CityType!
     }
     """
 
     assert str(schema) == textwrap.dedent(expected_schema).strip()
 
-    query = "{ manager { name } }"
+    query = "{ city { name } }"
 
     result = schema.execute_sync(query)
 
     assert not result.errors
-    assert result.data["manager"]["name"] == "Dave"
+    assert result.data["city"]["name"] == "Gotham"
 
 
 def test_basic_type_field_list(clear_types):
@@ -253,7 +264,7 @@ def test_nested_type_unordered(clear_types):
 
 
 def test_reverse_relation(clear_types):
-    @strawberry.experimental.pydantic.type(Team, related=["heroes"])
+    @strawberry.experimental.pydantic.type(Team, fields=["heroes"])
     class TeamType:
         pass
 
@@ -299,7 +310,7 @@ def test_all_fields_and_reverse_relation(clear_types):
     class ManagerType:
         pass
 
-    @strawberry.experimental.pydantic.type(Team, all_fields=True, related=["heroes"])
+    @strawberry.experimental.pydantic.type(Team, all_fields=True)
     class TeamType:
         pass
 
@@ -330,7 +341,7 @@ def test_all_fields_and_reverse_relation(clear_types):
 
 
 def test_one_to_many(clear_types):
-    @strawberry.experimental.pydantic.type(Team, related=["referrers"])
+    @strawberry.experimental.pydantic.type(Team, fields=["referrers"])
     class TeamType:
         pass
 

@@ -30,10 +30,17 @@ from strawberry.experimental.pydantic.conversion import (
     convert_strawberry_class_to_pydantic_model,
 )
 from strawberry.experimental.pydantic.fields import get_basic_type
-from strawberry.experimental.pydantic.nested import process_nested_fields
+from strawberry.experimental.pydantic.orm import (
+    is_orm_field,
+    is_ormar_field,
+    is_ormar_model,
+    is_sqlmodel_field,
+    replace_ormar_types,
+)
 from strawberry.experimental.pydantic.utils import (
     DataclassCreationFields,
     ensure_all_auto_fields_in_pydantic,
+    get_model_fields,
     get_default_factory_for_field,
     get_private_fields,
     sort_creation_fields,
@@ -44,17 +51,36 @@ from strawberry.schema_directive import StrawberrySchemaDirective
 from strawberry.types.type_resolver import _get_fields
 from strawberry.types.types import TypeDefinition
 
-from .exceptions import MissingFieldsListError, UnregisteredTypeException
+from .exceptions import MissingFieldsListError
 
 
-def replace_pydantic_types(type_: Any, is_input: bool):
+try:
+    from typing import ForwardRef  # type: ignore
+except ImportError:  # pragma: no cover
+    # ForwardRef is private in python 3.6 and 3.7
+    from typing import _ForwardRef as ForwardRef  # type: ignore
+
+from .lazy_types import LazyForwardRefType, LazyModelType
+
+
+def replace_pydantic_types(
+    type_: Any, is_input: bool, model: Type[BaseModel], name: str
+):
+    if isinstance(type_, ForwardRef):
+        return LazyForwardRefType[model, name] # type: ignore
+
+    if is_ormar_model(model):
+        return replace_ormar_types(type_, model, name)
+
     origin = getattr(type_, "__origin__", None)
     if origin is Literal:
         # Literal does not have types in its __args__ so we return early
         return type_
     if hasattr(type_, "__args__"):
         replaced_type = type_.copy_with(
-            tuple(replace_pydantic_types(t, is_input) for t in type_.__args__)
+            tuple(
+                replace_pydantic_types(t, is_input, model, name) for t in type_.__args__
+            )
         )
 
         if isinstance(replaced_type, TypeDefinition):
@@ -74,18 +100,25 @@ def replace_pydantic_types(type_: Any, is_input: bool):
         if hasattr(type_, attr):
             return getattr(type_, attr)
         else:
-            raise UnregisteredTypeException(type_)
+            return LazyModelType[type_] # type: ignore
 
     return type_
 
 
-def get_type_for_field(field: ModelField, is_input: bool):
-    type_ = field.outer_type_
-    type_ = get_basic_type(type_)
-    type_ = replace_pydantic_types(type_, is_input)
+def get_type_for_field(field: ModelField, is_input: bool, model, name):
+    if is_ormar_field(field):
+        type_ = replace_ormar_types(field, model, name)
+    elif is_sqlmodel_field(field):
+        type_ = replace_pydantic_types(
+            model.__annotations__[name], is_input, model, name
+        )
+    else:
+        type_ = field.outer_type_
+        type_ = get_basic_type(type_)
+        type_ = replace_pydantic_types(type_, is_input, model, name)
 
-    if not field.required:
-        type_ = Optional[type_]
+        if not field.required:
+            type_ = Optional[type_]
 
     return type_
 
@@ -96,35 +129,40 @@ def _build_dataclass_creation_fields(
     existing_fields: Dict[str, StrawberryField],
     auto_fields_set: Set[str],
     use_pydantic_alias: bool,
+    model: Type[BaseModel],
+    name: str,
 ) -> DataclassCreationFields:
+    if is_orm_field(field):
+        name_ = name
+        graphql_name, description = None, None
+    else:
+        graphql_name = field.alias if field.has_alias and use_pydantic_alias else None
+        name_ = field.name
+        description = field.field_info.description
+
     type_annotation = (
-        get_type_for_field(field, is_input)
-        if field.name in auto_fields_set
-        else existing_fields[field.name].type
+        get_type_for_field(field, is_input, model, name)
+        if name_ in auto_fields_set
+        else existing_fields[name_].type
     )
 
-    if (
-        field.name in existing_fields
-        and existing_fields[field.name].base_resolver is not None
-    ):
+    if name_ in existing_fields and existing_fields[name_].base_resolver is not None:
         # if the user has defined a resolver for this field, always use it
-        strawberry_field = existing_fields[field.name]
+        strawberry_field = existing_fields[name_]
     else:
         # otherwise we build an appropriate strawberry field that resolves it
         strawberry_field = StrawberryField(
-            python_name=field.name,
-            graphql_name=field.alias
-            if field.has_alias and use_pydantic_alias
-            else None,
+            python_name=name_,
+            graphql_name=graphql_name,
             # always unset because we use default_factory instead
             default=UNSET,
             default_factory=get_default_factory_for_field(field),
             type_annotation=type_annotation,
-            description=field.field_info.description,
+            description=description,
         )
 
     return DataclassCreationFields(
-        name=field.name,
+        name=name_,
         type_annotation=type_annotation,
         field=strawberry_field,
     )
@@ -152,7 +190,7 @@ def type(
     use_pydantic_alias: bool = True,
 ) -> Callable[..., Type[StrawberryTypeFromPydantic[PydanticModel]]]:
     def wrap(cls: Any) -> Type[StrawberryTypeFromPydantic[PydanticModel]]:
-        model_fields = model.__fields__
+        model_fields = get_model_fields(model)
         original_fields_set = set(fields) if fields else set([])
 
         if fields:
@@ -188,19 +226,15 @@ def type(
         if not fields_set:
             raise MissingFieldsListError(cls)
 
+        ensure_all_auto_fields_in_pydantic(
+            model=model,
+            auto_fields=auto_fields_set,
+            fields_set=fields_set,
+            cls_name=cls.__name__,
+        )
+
         exclude_set = set(exclude or [])
         fields_set = fields_set - exclude_set
-
-        nested_fields = process_nested_fields(cls, fields_set, model)
-
-        # Nested fields are already strawberry fields,
-        # we'll add them after model fields
-        fields_set = fields_set - set(f.name for f in nested_fields)
-        auto_fields_set = auto_fields_set - set(f.name for f in nested_fields)
-
-        ensure_all_auto_fields_in_pydantic(
-            model=model, auto_fields=auto_fields_set, cls_name=cls.__name__
-        )
 
         wrapped = _wrap_dataclass(cls)
         extra_strawberry_fields = _get_fields(wrapped)
@@ -211,7 +245,13 @@ def type(
 
         all_model_fields: List[DataclassCreationFields] = [
             _build_dataclass_creation_fields(
-                field, is_input, extra_fields_dict, auto_fields_set, use_pydantic_alias
+                field,
+                is_input,
+                extra_fields_dict,
+                auto_fields_set,
+                use_pydantic_alias,
+                model,
+                field_name,
             )
             for field_name, field in model_fields.items()
             if field_name in fields_set
@@ -224,7 +264,7 @@ def type(
                     type_annotation=field.type,
                     field=field,
                 )
-                for field in extra_fields + private_fields + nested_fields
+                for field in extra_fields + private_fields
                 if field.name not in fields_set
             )
         )

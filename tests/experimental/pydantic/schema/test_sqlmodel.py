@@ -7,6 +7,10 @@ from sqlmodel import Field, Relationship, SQLModel
 
 import strawberry
 
+class City(SQLModel, table=True):
+    id: Optional[int] = Field(primary_key=True, default=None)
+    name: str = Field()
+    population: int = Field()
 
 class Manager(SQLModel, table=True):
     id: Optional[int] = Field(primary_key=True, default=None)
@@ -34,48 +38,46 @@ class Hero(SQLModel, table=True):
 
 @pytest.fixture
 def clear_types():
-    if hasattr(Team, "_strawberry_type"):
-        delattr(Team, "_strawberry_type")
-    if hasattr(Hero, "_strawberry_type"):
-        delattr(Hero, "_strawberry_type")
+    for model in (Team, Hero, Manager, City):
+        if hasattr(model, "_strawberry_type"):
+            delattr(model, "_strawberry_type")
 
 
 def test_all_fields(clear_types):
-    @strawberry.experimental.pydantic.type(Team, all_fields=True)
-    class TeamType:
+    @strawberry.experimental.pydantic.type(City, all_fields=True)
+    class CityType:
         pass
 
     @strawberry.type
     class Query:
         @strawberry.field
-        def team(self) -> TeamType:
-            return TeamType(
-                id=1, name="hobbits", headquarters="The Shire", manager_id=1
+        def city(self) -> CityType:
+            return CityType(
+                id=1, name="Gotham", population=100000
             )
 
     schema = strawberry.Schema(query=Query)
 
     expected_schema = """
-    type Query {
-      team: TeamType!
+    type CityType {
+      name: String!
+      population: Int!
+      id: Int
     }
 
-    type TeamType {
-      name: String!
-      managerId: Int!
-      id: Int
-      headquarters: String
+    type Query {
+      city: CityType!
     }
     """
 
     assert str(schema) == textwrap.dedent(expected_schema).strip()
 
-    query = "{ team { name } }"
+    query = "{ city { name } }"
 
     result = schema.execute_sync(query)
 
     assert not result.errors
-    assert result.data["team"]["name"] == "hobbits"
+    assert result.data["city"]["name"] == "Gotham"
 
 
 def test_basic_type_field_list(clear_types):
